@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -163,16 +162,20 @@ func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websoc
 
 func setupPingHandler(conn *websocket.Conn) {
 	// Define a period for sending pings and waiting for pongs
-	pingPeriod := 30 * time.Second // Adjust based on your needs
-	pongWait := 10 * time.Second   // Time to wait for a pong response
+	pingPeriod := 30 * time.Second // Interval for sending pings (must be longer than pongWait)
+	pongWait := 10 * time.Second   // Time to wait for a pong response (must be shorter than pingPeriod)
 
-	// Track the time of the last received pong
-	var lastPongReceived atomic.Value
-	lastPongReceived.Store(time.Now())
+	// Channel to signal pong receipt
+	pongReceived := make(chan struct{})
 
-	// Update lastPongReceived in the pong handler
+	// Update lastPongReceived upon receiving a pong
 	conn.SetPongHandler(func(appData string) error {
-		lastPongReceived.Store(time.Now())
+		// Signal pong receipt
+		select {
+		case pongReceived <- struct{}{}:
+		default:
+			// Prevent blocking if no one's listening
+		}
 		return nil
 	})
 
@@ -183,17 +186,28 @@ func setupPingHandler(conn *websocket.Conn) {
 		for range ticker.C {
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Printf("Ping error: %s, connection will be retried...", err)
-				return // Exiting the goroutine will lead to closing and reconnecting the websocket in the main loop
+				return
 			}
-			// Launch a goroutine to check for the pong after pongWait
-			go func() {
-				time.Sleep(pongWait)
-				// Directly use the latest value of lastPongReceived for the comparison
-				if time.Since(lastPongReceived.Load().(time.Time)) > pongWait {
-					// If the time since the last pong is greater than pongWait, log the missed pong
-					log.Println("Pong not received within expected timeframe.")
+
+			// Set a timer for pongWait
+			pongTimer := time.NewTimer(pongWait)
+
+			// Wait for a pong or timeout
+			select {
+			case <-pongReceived:
+				// Pong received, stop the pongTimer and reset for the next ping
+				if !pongTimer.Stop() {
+					<-pongTimer.C
 				}
-			}()
+			case <-pongTimer.C:
+				// Pong wait timer expired without receiving a pong
+				log.Println("Pong not received within expected timeframe.")
+			}
+
+			// Ensure the timer is properly stopped to avoid goroutine leak
+			if !pongTimer.Stop() {
+				<-pongTimer.C
+			}
 		}
 	}()
 }
