@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -161,28 +162,39 @@ func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websoc
 }
 
 func setupPingHandler(conn *websocket.Conn) {
+	// Define a period for sending pings and waiting for pongs
+	pingPeriod := 30 * time.Second // Adjust based on your needs
+	pongWait := 10 * time.Second   // Time to wait for a pong response
+
+	// Track the time of the last received pong
+	var lastPongReceived atomic.Value
+	lastPongReceived.Store(time.Now())
+
+	// Update lastPongReceived in the pong handler
+	conn.SetPongHandler(func(appData string) error {
+		lastPongReceived.Store(time.Now())
+		return nil
+	})
+
 	go func() {
-		pingPeriod := 30 * time.Second // Adjust based on your needs
 		ticker := time.NewTicker(pingPeriod)
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-					log.Printf("Ping error: %s, connection will be retried...", err)
-					return // Exiting the goroutine will lead to closing and reconnecting the websocket in the main loop
-				}
+		for range ticker.C {
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("Ping error: %s, connection will be retried...", err)
+				return // Exiting the goroutine will lead to closing and reconnecting the websocket in the main loop
 			}
+			// After sending a ping, wait for a specific duration to receive a pong
+			go func(lastPong time.Time) {
+				time.Sleep(pongWait)
+				if time.Since(lastPongReceived.Load().(time.Time)) > pongWait {
+					// If the time since the last pong is greater than pongWait, log the missed pong
+					log.Println("Pong not received within expected timefram.")
+				}
+			}(lastPongReceived.Load().(time.Time))
 		}
 	}()
-
-	// Handling pong messages to measure the latency (if needed) or simply to keep the connection alive
-	conn.SetPongHandler(func(appData string) error {
-		log.Printf("Received pong: %s", appData)
-		// Update the last seen pong timestamp here, if you're tracking connection health
-		return nil
-	})
 }
 
 func processMessages(ctx context.Context, conn *websocket.Conn, sess *session.Session) {
