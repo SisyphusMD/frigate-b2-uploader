@@ -190,7 +190,6 @@ func setupPingHandler(conn *websocket.Conn) {
 
 			select {
 			case <-pongReceived:
-				log.Println("Pong received.")
 				pongTimer.Stop() // Stop the timer when a pong is received. No need to drain since we don't reuse it.
 			case <-pongTimer.C:
 				log.Println("Pong not received within expected timeframe.") // Pong wait timer expired without receiving a pong
