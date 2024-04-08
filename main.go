@@ -161,16 +161,13 @@ func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websoc
 }
 
 func setupPingHandler(conn *websocket.Conn) {
-	// Define a period for sending pings and waiting for pongs
 	pingPeriod := 30 * time.Second // Interval for sending pings (must be longer than pongWait)
 	pongWait := 10 * time.Second   // Time to wait for a pong response (must be shorter than pingPeriod)
 
-	// Channel to signal pong receipt
 	pongReceived := make(chan struct{})
 
 	// Update lastPongReceived upon receiving a pong
 	conn.SetPongHandler(func(appData string) error {
-		// Signal pong receipt
 		select {
 		case pongReceived <- struct{}{}:
 		default:
@@ -189,24 +186,14 @@ func setupPingHandler(conn *websocket.Conn) {
 				return
 			}
 
-			// Set a timer for pongWait
 			pongTimer := time.NewTimer(pongWait)
 
-			// Wait for a pong or timeout
 			select {
 			case <-pongReceived:
-				// Pong received, stop the pongTimer and reset for the next ping
-				if !pongTimer.Stop() {
-					<-pongTimer.C
-				}
+				log.Println("Pong received.")
+				pongTimer.Stop() // Stop the timer when a pong is received. No need to drain since we don't reuse it.
 			case <-pongTimer.C:
-				// Pong wait timer expired without receiving a pong
-				log.Println("Pong not received within expected timeframe.")
-			}
-
-			// Ensure the timer is properly stopped to avoid goroutine leak
-			if !pongTimer.Stop() {
-				<-pongTimer.C
+				log.Println("Pong not received within expected timeframe.") // Pong wait timer expired without receiving a pong
 			}
 		}
 	}()
