@@ -1,0 +1,9 @@
+networks:
+  docker:
+    external: true
+
+services:
+  frigate-b2-uploader:
+    build: .
+    networks:
+      docker:
