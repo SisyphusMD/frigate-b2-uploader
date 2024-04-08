@@ -1,0 +1,35 @@
+# Ignore .env file containing sensitive environment variables
+.env
+
+# Binaries and object files
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.o
+*.a
+*.out
+*.test
+
+# Log files
+*.log
+
+# Vendor directory
+/vendor/
+
+# Go build directories
+/bin/
+/pkg/
+
+# Dependency directories (commented out if you prefer to keep them in your repository)
+# /vendor/
+# Gopkg.lock
+
+# IDE and editor folders
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
