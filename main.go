@@ -185,14 +185,15 @@ func setupPingHandler(conn *websocket.Conn) {
 				log.Printf("Ping error: %s, connection will be retried...", err)
 				return // Exiting the goroutine will lead to closing and reconnecting the websocket in the main loop
 			}
-			// After sending a ping, wait for a specific duration to receive a pong
-			go func(lastPong time.Time) {
+			// Launch a goroutine to check for the pong after pongWait
+			go func() {
 				time.Sleep(pongWait)
+				// Directly use the latest value of lastPongReceived for the comparison
 				if time.Since(lastPongReceived.Load().(time.Time)) > pongWait {
 					// If the time since the last pong is greater than pongWait, log the missed pong
-					log.Println("Pong not received within expected timefram.")
+					log.Println("Pong not received within expected timeframe.")
 				}
-			}(lastPongReceived.Load().(time.Time))
+			}()
 		}
 	}()
 }
