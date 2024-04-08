@@ -154,7 +154,35 @@ func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websoc
 	defer conn.Close()
 	log.Println("Connected to Frigate WebSocket")
 
+	// Setting up a ping handler - consider adjusting the ping period as necessary
+	setupPingHandler(conn)
+
 	processMessages(ctx, conn, sess)
+}
+
+func setupPingHandler(conn *websocket.Conn) {
+	go func() {
+		pingPeriod := 30 * time.Second // Adjust based on your needs
+		ticker := time.NewTicker(pingPeriod)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					log.Printf("Ping error: %s, connection will be retried...", err)
+					return // Exiting the goroutine will lead to closing and reconnecting the websocket in the main loop
+				}
+			}
+		}
+	}()
+
+	// Handling pong messages to measure the latency (if needed) or simply to keep the connection alive
+	conn.SetPongHandler(func(appData string) error {
+		log.Printf("Received pong: %s", appData)
+		// Update the last seen pong timestamp here, if you're tracking connection health
+		return nil
+	})
 }
 
 func processMessages(ctx context.Context, conn *websocket.Conn, sess *session.Session) {
