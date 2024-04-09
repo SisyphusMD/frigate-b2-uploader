@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -v -o main .
 
 # Start a new stage from scratch for a smaller, final image.
 FROM alpine:latest  
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /root/
 

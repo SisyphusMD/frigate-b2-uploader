@@ -49,10 +49,12 @@ type EventPayload struct {
 
 // EventDetails contains details about an event
 type EventDetails struct {
-	ID      string   `json:"id"`
-	HasClip bool     `json:"has_clip"`
-	Label   string   `json:"label"`
-	EndTime *float64 `json:"end_time"` // Allows for null or a timestamp
+	ID        string   `json:"id"`
+	HasClip   bool     `json:"has_clip"`
+	Label     string   `json:"label"`
+	Camera    string   `json:"camera"`
+	EndTime   *float64 `json:"end_time"` // Allows for null or a timestamp
+	StartTime *float64 `json:"start_time"`
 }
 
 // getEnv retrieves environment variable value or exits if the variable is not set.
@@ -93,9 +95,10 @@ func uploadClipToB2(sess *session.Session, clipURL, objectKey string) error {
 
 	uploader := s3manager.NewUploaderWithClient(svc)
 	_, err = uploader.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-		Body:   resp.Body,
+		Bucket:      aws.String(bucketName),
+		Key:         aws.String(objectKey),
+		Body:        resp.Body,
+		ContentType: aws.String("video/mp4"),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to upload file: %v", err)
@@ -240,7 +243,7 @@ func processEventMessage(ctx context.Context, sess *session.Session, payload jso
 	}
 
 	if shouldUploadClip(eventPayload) {
-		go uploadEventClip(ctx, sess, eventPayload.After.ID)
+		go uploadEventClip(ctx, sess, eventPayload)
 	}
 }
 
@@ -250,7 +253,7 @@ func shouldUploadClip(payload EventPayload) bool {
 }
 
 // uploadEventClip handles the uploading of event clips.
-func uploadEventClip(ctx context.Context, sess *session.Session, clipID string) {
+func uploadEventClip(ctx context.Context, sess *session.Session, payload EventPayload) {
 	wg.Add(1)       // Increment the WaitGroup counter
 	defer wg.Done() // Decrement the counter when the function exits
 
@@ -259,13 +262,20 @@ func uploadEventClip(ctx context.Context, sess *session.Session, clipID string) 
 	case <-time.After(12 * time.Second): // Wait for clip to be ready, as per https://github.com/blakeblackshear/frigate/issues/6662, respects graceful shutdown
 	case <-ctx.Done():
 		// The context was cancelled, but we'll log and continue with the upload to ensure all initiated operations complete.
-		log.Printf("Shutdown signal received, but proceeding with upload for clip: %s", clipID)
+		log.Printf("Shutdown signal received, but proceeding with upload for clip: %s", payload.After.ID)
 	}
 
-	clipURL := fmt.Sprintf("http://%s:%s/api/events/%s/clip.mp4", frigateIPAddress, frigatePort, clipID)
+	clipURL := fmt.Sprintf("http://%s:%s/api/events/%s/clip.mp4", frigateIPAddress, frigatePort, payload.After.ID)
 	log.Printf("Preparing to upload clip: %s", clipURL)
 
-	objectKey := fmt.Sprintf("%s.mp4", clipID)
+	startTime := time.Unix(int64(*payload.After.StartTime), 0) // Convert UNIX timestamp to time.Time
+	objectKey := fmt.Sprintf("/%d/%02d/%s_%s_%d%02d%02d_%02d%02d%02d_%s.mp4",
+		startTime.Year(), startTime.Month(),
+		payload.After.Camera, payload.After.Label,
+		startTime.Year(), startTime.Month(), startTime.Day(),
+		startTime.Hour(), startTime.Minute(), startTime.Second(),
+		payload.After.ID)
+
 	if err := uploadClipToB2(sess, clipURL, objectKey); err != nil {
 		log.Printf("Failed to upload clip: %v", err)
 	}
