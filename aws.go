@@ -15,11 +15,11 @@ import (
 )
 
 // newAWSSession initializes a new AWS session.
-func newAWSSession() *session.Session {
+func newAWSSession(config Config) *session.Session {
 	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(awsRegion),
-		Endpoint:    aws.String(awsEndpoint),
-		Credentials: credentials.NewStaticCredentials(awsAccessKeyID, awsSecretAccessKey, ""),
+		Region:      aws.String(config.AWSRegion),
+		Endpoint:    aws.String(config.AWSEndpoint),
+		Credentials: credentials.NewStaticCredentials(config.AWSAccessKeyID, config.AWSSecretAccessKey, ""),
 	})
 	if err != nil {
 		log.Fatalf("Failed to create AWS session: %s", err)
@@ -28,7 +28,7 @@ func newAWSSession() *session.Session {
 }
 
 // uploadClipToB2 uploads a clip to the B2 storage.
-func uploadClipToB2(sess *session.Session, clipURL, objectKey string) error {
+func uploadClipToB2(sess *session.Session, clipURL, objectKey string, config Config) error {
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -43,7 +43,7 @@ func uploadClipToB2(sess *session.Session, clipURL, objectKey string) error {
 
 	uploader := s3manager.NewUploaderWithClient(svc)
 	_, err = uploader.Upload(&s3manager.UploadInput{
-		Bucket:      aws.String(bucketName),
+		Bucket:      aws.String(config.BucketName),
 		Key:         aws.String(objectKey),
 		Body:        resp.Body,
 		ContentType: aws.String("video/mp4"),
@@ -52,6 +52,6 @@ func uploadClipToB2(sess *session.Session, clipURL, objectKey string) error {
 		return fmt.Errorf("failed to upload file: %v", err)
 	}
 
-	log.Printf("Successfully uploaded %s to %s\n", objectKey, bucketName)
+	log.Printf("Successfully uploaded %s to %s\n", objectKey, config.BucketName)
 	return nil
 }

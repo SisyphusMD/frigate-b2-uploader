@@ -9,22 +9,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/gorilla/websocket"
-)
-
-// Configurable constants through environment variables
-
-var (
-	frigateIPAddress   = getEnv("FRIGATE_IP_ADDRESS")
-	frigatePort        = getEnv("FRIGATE_PORT")
-	awsRegion          = getEnv("AWS_REGION")
-	awsEndpoint        = getEnv("AWS_ENDPOINT")
-	awsAccessKeyID     = getEnv("AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey = getEnv("AWS_SECRET_ACCESS_KEY")
-	bucketName         = getEnv("BUCKET_NAME")
 )
 
 // Define a WaitGroup globally to keep track of ongoing processes
@@ -52,23 +39,16 @@ type EventDetails struct {
 	StartTime *float64 `json:"start_time"`
 }
 
-// getEnv retrieves environment variable value or exits if the variable is not set.
-func getEnv(key string) string {
-	value, exists := os.LookupEnv(key)
-	if !exists {
-		log.Fatalf("Environment variable %s must be set", key)
-	}
-	return value
-}
-
 func main() {
+	config := LoadConfig() // Load the configuration
+
 	handleShutdown()
 
-	wsURL := fmt.Sprintf("ws://%s:%s/ws", frigateIPAddress, frigatePort)
+	wsURL := fmt.Sprintf("ws://%s:%s/ws", config.FrigateIPAddress, config.FrigatePort)
 	dialer := websocket.DefaultDialer
-	sess := newAWSSession()
+	sess := newAWSSession(config)
 
-	mainLoop(wsURL, dialer, sess)
+	mainLoop(wsURL, dialer, sess, config)
 }
 
 func handleShutdown() {
@@ -85,7 +65,7 @@ func handleShutdown() {
 	}()
 }
 
-func mainLoop(wsURL string, dialer *websocket.Dialer, sess *session.Session) {
+func mainLoop(wsURL string, dialer *websocket.Dialer, sess *session.Session, config Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -95,144 +75,7 @@ func mainLoop(wsURL string, dialer *websocket.Dialer, sess *session.Session) {
 			log.Println("Shutting down gracefully...")
 			return
 		default:
-			connectAndProcessMessages(ctx, wsURL, dialer, sess)
+			connectAndProcessMessages(ctx, wsURL, dialer, sess, config)
 		}
-	}
-}
-
-func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websocket.Dialer, sess *session.Session) {
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		log.Printf("Error connecting to WebSocket: %s, retrying...", err)
-		time.Sleep(5 * time.Second)
-		return
-	}
-	defer conn.Close()
-	log.Println("Connected to Frigate WebSocket")
-
-	// Setting up a ping handler - consider adjusting the ping period as necessary
-	setupPingHandler(conn)
-
-	processMessages(ctx, conn, sess)
-}
-
-func setupPingHandler(conn *websocket.Conn) {
-	pingPeriod := 30 * time.Second // Interval for sending pings (must be longer than pongWait)
-	pongWait := 10 * time.Second   // Time to wait for a pong response (must be shorter than pingPeriod)
-
-	pongReceived := make(chan struct{})
-
-	// Update lastPongReceived upon receiving a pong
-	conn.SetPongHandler(func(appData string) error {
-		select {
-		case pongReceived <- struct{}{}:
-		default:
-			// Prevent blocking if no one's listening
-		}
-		return nil
-	})
-
-	go func() {
-		ticker := time.NewTicker(pingPeriod)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("Ping error: %s, connection will be retried...", err)
-				return
-			}
-
-			pongTimer := time.NewTimer(pongWait)
-
-			select {
-			case <-pongReceived:
-				pongTimer.Stop() // Stop the timer when a pong is received. No need to drain since we don't reuse it.
-			case <-pongTimer.C:
-				log.Println("Pong not received within expected timeframe.") // Pong wait timer expired without receiving a pong
-			}
-		}
-	}()
-}
-
-func processMessages(ctx context.Context, conn *websocket.Conn, sess *session.Session) {
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			return // Return to attempt reconnection
-		}
-		go handleMessage(ctx, sess, message)
-	}
-}
-
-// handleMessage processes each message received from the WebSocket.
-func handleMessage(ctx context.Context, sess *session.Session, message []byte) {
-	var msg FrigateMessage
-	if err := json.Unmarshal(message, &msg); err != nil {
-		log.Printf("Error unmarshalling message: %v", err)
-		return
-	}
-
-	if msg.Topic != "events" {
-		return // Ignore non-event messages
-	}
-
-	processEventMessage(ctx, sess, msg.Payload)
-}
-
-// processEventMessage handles the logic specific to event messages
-func processEventMessage(ctx context.Context, sess *session.Session, payload json.RawMessage) {
-	// Now, we have to unmarshal the payload into a string because it's a JSON-encoded string when the topic is "events", but it is sometimes a number on other topics.
-	var payloadStr string
-	if err := json.Unmarshal(payload, &payloadStr); err != nil {
-		log.Printf("Error unmarshalling payload into string: %v", err)
-		return
-	}
-
-	var eventPayload EventPayload
-	if err := json.Unmarshal([]byte(payloadStr), &eventPayload); err != nil {
-		log.Printf("Error unmarshalling event payload: %v", err)
-		return
-	}
-
-	if shouldUploadClip(eventPayload) {
-		go uploadEventClip(ctx, sess, eventPayload)
-	}
-}
-
-// shouldUploadClip determines if a clip should be uploaded based on the event payload.
-func shouldUploadClip(payload EventPayload) bool {
-	return payload.Type == "end" && payload.After.EndTime != nil && payload.After.HasClip && payload.After.Label == "person"
-}
-
-// uploadEventClip handles the uploading of event clips.
-func uploadEventClip(ctx context.Context, sess *session.Session, payload EventPayload) {
-	wg.Add(1)       // Increment the WaitGroup counter
-	defer wg.Done() // Decrement the counter when the function exits
-
-	// Log that an event has been triggered
-	eventTime := time.Unix(int64(*payload.After.StartTime), 0) // Convert UNIX timestamp to time.Time
-	log.Printf("Event triggered at %s on camera %s. Waiting for clip to be ready...", eventTime.Format("2006-01-02 15:04:05"), payload.After.Camera)
-
-	// Wait for clip to be ready or for a shutdown signal.
-	select {
-	case <-time.After(12 * time.Second): // Wait for clip to be ready, as per https://github.com/blakeblackshear/frigate/issues/6662, respects graceful shutdown
-		// Log that we are now preparing to upload the clip, after the wait
-		log.Printf("Preparing to upload clip for event at %s on camera %s.", eventTime.Format("2006-01-02 15:04:05"), payload.After.Camera)
-	case <-ctx.Done():
-		// The context was cancelled, but we'll log and continue with the upload to ensure all initiated operations complete.
-		log.Printf("Shutdown signal received, but proceeding with upload for clip: %s", payload.After.ID)
-	}
-
-	clipURL := fmt.Sprintf("http://%s:%s/api/events/%s/clip.mp4", frigateIPAddress, frigatePort, payload.After.ID)
-
-	objectKey := fmt.Sprintf("/%d/%02d/%d%02d%02d_%02d%02d%02d_%s_%s.mp4",
-		eventTime.Year(), eventTime.Month(),
-		eventTime.Year(), eventTime.Month(), eventTime.Day(),
-		eventTime.Hour(), eventTime.Minute(), eventTime.Second(),
-		payload.After.Camera, payload.After.ID)
-
-	if err := uploadClipToB2(sess, clipURL, objectKey); err != nil {
-		log.Printf("Failed to upload clip: %v", err)
 	}
 }
