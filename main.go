@@ -257,24 +257,27 @@ func uploadEventClip(ctx context.Context, sess *session.Session, payload EventPa
 	wg.Add(1)       // Increment the WaitGroup counter
 	defer wg.Done() // Decrement the counter when the function exits
 
+	// Log that an event has been triggered
+	eventTime := time.Unix(int64(*payload.After.StartTime), 0) // Convert UNIX timestamp to time.Time
+	log.Printf("Event triggered at %s on camera %s. Waiting for clip to be ready...", eventTime.Format("2006-01-02 15:04:05"), payload.After.Camera)
+
 	// Wait for clip to be ready or for a shutdown signal.
 	select {
 	case <-time.After(12 * time.Second): // Wait for clip to be ready, as per https://github.com/blakeblackshear/frigate/issues/6662, respects graceful shutdown
+		// Log that we are now preparing to upload the clip, after the wait
+		log.Printf("Preparing to upload clip for event at %s on camera %s.", eventTime.Format("2006-01-02 15:04:05"), payload.After.Camera)
 	case <-ctx.Done():
 		// The context was cancelled, but we'll log and continue with the upload to ensure all initiated operations complete.
 		log.Printf("Shutdown signal received, but proceeding with upload for clip: %s", payload.After.ID)
 	}
 
 	clipURL := fmt.Sprintf("http://%s:%s/api/events/%s/clip.mp4", frigateIPAddress, frigatePort, payload.After.ID)
-	log.Printf("Preparing to upload clip: %s", clipURL)
 
-	startTime := time.Unix(int64(*payload.After.StartTime), 0) // Convert UNIX timestamp to time.Time
-	objectKey := fmt.Sprintf("/%d/%02d/%s_%s_%d%02d%02d_%02d%02d%02d_%s.mp4",
-		startTime.Year(), startTime.Month(),
-		payload.After.Camera, payload.After.Label,
-		startTime.Year(), startTime.Month(), startTime.Day(),
-		startTime.Hour(), startTime.Minute(), startTime.Second(),
-		payload.After.ID)
+	objectKey := fmt.Sprintf("/%d/%02d/%d%02d%02d_%02d%02d%02d_%s_%s.mp4",
+		eventTime.Year(), eventTime.Month(),
+		eventTime.Year(), eventTime.Month(), eventTime.Day(),
+		eventTime.Hour(), eventTime.Minute(), eventTime.Second(),
+		payload.After.Camera, payload.After.ID)
 
 	if err := uploadClipToB2(sess, clipURL, objectKey); err != nil {
 		log.Printf("Failed to upload clip: %v", err)
