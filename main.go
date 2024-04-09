@@ -46,9 +46,9 @@ func main() {
 
 	wsURL := fmt.Sprintf("ws://%s:%s/ws", config.FrigateIPAddress, config.FrigatePort)
 	dialer := websocket.DefaultDialer
-	sess := newAWSSession(config)
+	sess := newAWSSession(config.AWSRegion, config.AWSEndpoint, config.AWSAccessKeyID, config.AWSSecretAccessKey)
 
-	mainLoop(wsURL, dialer, sess, config)
+	mainLoop(wsURL, dialer, sess, config.FrigateIPAddress, config.FrigatePort, config.BucketName)
 }
 
 func handleShutdown() {
@@ -65,7 +65,7 @@ func handleShutdown() {
 	}()
 }
 
-func mainLoop(wsURL string, dialer *websocket.Dialer, sess *session.Session, config Config) {
+func mainLoop(wsURL string, dialer *websocket.Dialer, sess *session.Session, frigateIPAddress string, frigatePort string, bucketName string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -75,7 +75,7 @@ func mainLoop(wsURL string, dialer *websocket.Dialer, sess *session.Session, con
 			log.Println("Shutting down gracefully...")
 			return
 		default:
-			connectAndProcessMessages(ctx, wsURL, dialer, sess, config)
+			connectAndProcessMessages(ctx, wsURL, dialer, sess, frigateIPAddress, frigatePort, bucketName)
 		}
 	}
 }

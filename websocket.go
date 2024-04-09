@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websocket.Dialer, sess *session.Session, config Config) {
+func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websocket.Dialer, sess *session.Session, frigateIPAddress string, frigatePort string, bucketName string) {
 	conn, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
 		log.Printf("Error connecting to WebSocket: %s, retrying...", err)
@@ -23,7 +23,7 @@ func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websoc
 	// Setting up a ping handler - consider adjusting the ping period as necessary
 	setupPingHandler(conn)
 
-	processMessages(ctx, conn, sess, config)
+	processMessages(ctx, conn, sess, frigateIPAddress, frigatePort, bucketName)
 }
 
 func setupPingHandler(conn *websocket.Conn) {
