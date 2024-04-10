@@ -1,29 +1,34 @@
 package main
 
-// WebSocket related imports
 import (
 	"context"
 	"log"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/gorilla/websocket"
 )
 
-func connectAndProcessMessages(ctx context.Context, wsURL string, dialer *websocket.Dialer, sess *session.Session, frigateIPAddress string, frigatePort string, bucketName string) {
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		log.Printf("Error connecting to WebSocket: %s, retrying...", err)
-		time.Sleep(5 * time.Second)
-		return
+func connectWebSocket(ctx context.Context, wsURL string) (*websocket.Conn, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			// Context canceled, stop trying to connect
+			return nil, ctx.Err()
+		default:
+			conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+			if err != nil {
+				log.Printf("Error connecting to Websocket: %s, retrying in 5 seconds...", err)
+				time.Sleep(5 * time.Second) // Wait before retrying
+				continue                    // Try connecting again
+			}
+			log.Println("Connected to WebSocket")
+
+			// Setup ping handler as soon as connection is established
+			setupPingHandler(conn)
+
+			return conn, nil // Connection successful, return the connection
+		}
 	}
-	defer conn.Close()
-	log.Println("Connected to Frigate WebSocket")
-
-	// Setting up a ping handler - consider adjusting the ping period as necessary
-	setupPingHandler(conn)
-
-	processMessages(ctx, conn, sess, frigateIPAddress, frigatePort, bucketName)
 }
 
 func setupPingHandler(conn *websocket.Conn) {
