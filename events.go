@@ -109,7 +109,7 @@ func prepareClip(config Config, ctx context.Context, payload EventPayload) {
 		log.Printf("Shutdown signal received, but proceeding with upload for clip: %s", payload.After.ID)
 	}
 
-	if err := uploadClip(config, clipURL, objectKey); err != nil {
+	if err := uploadClip(config.StorageBackends, clipURL, objectKey); err != nil {
 		log.Printf("Failed to upload clip: %v", err)
 	}
 }

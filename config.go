@@ -6,24 +6,34 @@ import (
 )
 
 type Config struct {
-	FrigateIPAddress   string
-	FrigatePort        string
-	AWSRegion          string
-	AWSEndpoint        string
-	AWSAccessKeyID     string
-	AWSSecretAccessKey string
-	BucketName         string
+	FrigateIPAddress string
+	FrigatePort      string
+	StorageBackends  string
 }
 
-func LoadConfig() Config {
+type B2Config struct {
+	Region          string
+	Endpoint        string
+	AccessKeyID     string
+	SecretAccessKey string
+	BucketName      string
+}
+
+func loadConfig() Config {
 	return Config{
-		FrigateIPAddress:   getEnv("FRIGATE_IP_ADDRESS"),
-		FrigatePort:        getEnv("FRIGATE_PORT"),
-		AWSRegion:          getEnv("AWS_REGION"),
-		AWSEndpoint:        getEnv("AWS_ENDPOINT"),
-		AWSAccessKeyID:     getEnv("AWS_ACCESS_KEY_ID"),
-		AWSSecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY"),
-		BucketName:         getEnv("BUCKET_NAME"),
+		FrigateIPAddress: getEnv("FRIGATE_IP_ADDRESS"),
+		FrigatePort:      getEnv("FRIGATE_PORT"),
+		StorageBackends:  getEnv("STORAGE_BACKENDS"),
+	}
+}
+
+func loadB2Config() B2Config {
+	return B2Config{
+		Region:          getEnv("B2_REGION"),
+		Endpoint:        getEnv("B2_ENDPOINT"),
+		AccessKeyID:     getEnv("B2_ACCESS_KEY_ID"),
+		SecretAccessKey: getEnv("B2_SECRET_ACCESS_KEY"),
+		BucketName:      getEnv("B2_BUCKET_NAME"),
 	}
 }
 

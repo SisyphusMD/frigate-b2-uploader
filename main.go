@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	config := LoadConfig() // Load the configuration
+	config := loadConfig() // Load the configuration
 
 	handleShutdown()
 
