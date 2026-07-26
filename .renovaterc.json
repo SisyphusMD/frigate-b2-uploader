@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "customManagers:dockerfileVersions"
+  ],
+  "gitAuthor": "Renovate Bot <renovate@bryantserver.local>",
+  "prConcurrentLimit": 0,
+  "prHourlyLimit": 0,
+  "separateMinorPatch": true,
+  "pinDigests": true,
+  "fetchChangeLogs": "pr",
+  "enabledManagers": ["gomod", "dockerfile", "docker-compose", "github-actions", "custom.regex"],
+  "includePaths": [
+    "go.mod",
+    "go.sum",
+    "Dockerfile",
+    "compose.yaml",
+    "frigate-b2-uploader-addon/Dockerfile",
+    ".forgejo/workflows/**"
+  ],
+  "github-actions": {
+    "managerFilePatterns": ["/(\\.github|\\.forgejo)/workflows/.+\\.ya?ml$/"]
+  },
+  "packageRules": [
+    {
+      "description": "Docker Images",
+      "matchDatasources": ["docker"],
+      "addLabels": ["docker"]
+    },
+    {
+      "description": "Go Modules",
+      "matchManagers": ["gomod"],
+      "addLabels": ["go"]
+    },
+    {
+      "description": "Major Updates",
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["major-update"]
+    },
+    {
+      "description": "Minor Updates",
+      "matchUpdateTypes": ["minor"],
+      "addLabels": ["minor-update"]
+    },
+    {
+      "description": "Patch Updates",
+      "matchUpdateTypes": ["patch"],
+      "addLabels": ["patch-update"]
+    },
+    {
+      "description": "No CI here yet, so nothing would catch a bad bump — every update is reviewed by hand until this repo has a build workflow.",
+      "matchUpdateTypes": ["patch", "digest"],
+      "automerge": false
+    }
+  ]
+}
