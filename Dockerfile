@@ -1,5 +1,5 @@
 # Start from the official Go image to build our application.
-FROM golang:1.22.2 AS builder
+FROM golang:1.22.12@sha256:1cf6c45ba39db9fd6db16922041d074a63c935556a05c5ccb62d181034df7f02 AS builder
 
 # Set the current working directory inside the container.
 WORKDIR /app
