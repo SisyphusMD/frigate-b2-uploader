@@ -2,7 +2,7 @@ module frigate-b2-uploader
 
 go 1.22.2
 
-require github.com/gorilla/websocket v1.5.1
+require github.com/gorilla/websocket v1.5.3
 
 require (
 	github.com/aws/aws-sdk-go v1.51.16 // indirect
